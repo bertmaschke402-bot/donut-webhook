@@ -3,11 +3,6 @@
     "api/track.js": {
       "maxDuration": 10
     }
-  },
-  "crons": [
-    {
-      "path": "/api/track",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  }
+  // KEIN crons Abschnitt mehr!
 }
