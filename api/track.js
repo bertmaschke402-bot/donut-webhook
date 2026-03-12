@@ -1,6 +1,7 @@
 import { fetchDonutPrices, analyzePriceChanges } from '../lib/donut-api.js';
 import { sendWebhook, testWebhook } from '../lib/webhook.js';
 
+// In-Memory Speicher für vorherige Preise
 let previousPrices = {};
 
 export default async function handler(req, res) {
@@ -15,8 +16,8 @@ export default async function handler(req, res) {
   const secretFromHeader = req.headers['x-cron-secret'];
   const cronSecret = secretFromQuery || secretFromHeader;
   
-  // 2️⃣ Gegen das gespeicherte Secret prüfen (OHNE trim Probleme)
-  const expectedSecret = process.env.CRON_SECRET || 'bert11'; // Fallback
+  // 2️⃣ Gegen das gespeicherte Secret prüfen
+  const expectedSecret = process.env.CRON_SECRET || 'bert11';
   
   console.log('🔐 Secret Check:');
   console.log('- Von Query:', secretFromQuery);
@@ -32,7 +33,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // 3️⃣ Test-Modus
+  // 3️⃣ TEST-MODUS: Wenn ?test=true im URL
   if (req.query.test === 'true' || req.query.test === '1') {
     console.log('🧪 Test-Modus aktiviert!');
     const testResult = await testWebhook();
@@ -45,46 +46,63 @@ export default async function handler(req, res) {
     });
   }
 
-  // 4️⃣ Normale Ausführung
+  // 4️⃣ NORMBLER MODUS: Echte DonutSMP Daten checken
   try {
     console.log('🔍 Donut-Tracker gestartet:', new Date().toISOString());
     
-    // ⚠️ TEMPORÄR: Immer Test-Daten zurückgeben bis API fertig
-    return res.status(200).json({
-      success: true,
-      message: 'API funktioniert! (Tracker bald bereit)',
-      timestamp: new Date().toISOString()
-    });
-    
-    /* AUSKOMMENTIERT bis DonutSMP API klar ist
+    // ECHTE DonutSMP Daten holen
     const currentPrices = await fetchDonutPrices();
     
     if (!currentPrices) {
-      return res.status(500).json({ error: 'Failed to fetch prices' });
+      return res.status(500).json({ 
+        error: 'Failed to fetch DonutSMP prices',
+        hint: 'Check ob DONUT_API_KEY und DONUT_API_URL in Vercel eingetragen sind'
+      });
     }
 
+    console.log('📊 Aktuelle DonutSMP Daten:', Object.keys(currentPrices).length, 'Spieler');
+    
     let significantChanges = [];
-    if (Object.keys(previousPrices).length > 0) {
-      significantChanges = analyzePriceChanges(currentPrices, previousPrices);
+    
+    // Ersten Durchlauf: Nur speichern, keine Alerts
+    if (Object.keys(previousPrices).length === 0) {
+      console.log('📝 Erster Durchlauf - Speichere Ausgangsdaten');
+      previousPrices = currentPrices;
       
-      if (significantChanges.length > 0) {
-        await sendWebhook(significantChanges);
-        console.log(`✅ ${significantChanges.length} krass Änderungen entdeckt!`);
-      }
+      return res.status(200).json({
+        success: true,
+        message: 'Erster Durchlauf - Daten gespeichert, nächste Checks bringen Alerts',
+        players: Object.keys(currentPrices).length,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Zweiter+ Durchlauf: Vergleichen und Alerts senden
+    significantChanges = analyzePriceChanges(currentPrices, previousPrices);
+    
+    if (significantChanges.length > 0) {
+      console.log(`✅ ${significantChanges.length} krasse Änderungen entdeckt!`);
+      await sendWebhook(significantChanges);
+    } else {
+      console.log('😴 Keine krassen Änderungen - alles ruhig');
     }
 
+    // Preise für nächstes Mal speichern
     previousPrices = currentPrices;
 
     return res.status(200).json({
       success: true,
       tracked: significantChanges.length,
       changes: significantChanges,
+      players: Object.keys(currentPrices).length,
       timestamp: new Date().toISOString()
     });
-    */
 
   } catch (error) {
-    console.error('❌ Fehler im Tracker:', error);
-    return res.status(500).json({ error: error.message });
+    console.error('❌ KRASSER FEHLER im Tracker:', error);
+    return res.status(500).json({ 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 }
