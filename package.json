@@ -1,9 +1,7 @@
 {
-  "name": "donut-stock-tracker",
+  "name": "donut-tracker",
   "version": "1.0.0",
-  "scripts": {
-    "dev": "vercel dev"
-  },
+  "type": "module",
   "dependencies": {
     "node-fetch": "^3.3.2"
   }
